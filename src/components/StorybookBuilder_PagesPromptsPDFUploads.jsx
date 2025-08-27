@@ -1,20 +1,24 @@
-import React, { useMemo, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import React, { useMemo, useRef, useState } from "react";
 import { jsPDF } from "jspdf";
 
-/**
- * Storybook Builder (Pages + Illustration Prompts + Picture-PDF + Image Uploads)
- * ------------------------------------------------------------------------------
- * - Collects child details (incl. gender + skin tone).
- * - Generates page-by-page story text AND matching illustration prompts.
- * - Lets you upload one image per page and previews it.
- * - Exports a Picture‑Book PDF embedding your uploaded images.
- */
+/** Storybook Builder: pages + Pixar-style prompts + per-page image uploads + PDF/TXT export. */
+const defaultForm = {
+  name: "",
+  gender: "child",
+  skin: "light",
+  hair: "",
+  favoriteColor: "",
+  favoriteAnimal: "",
+  homeTown: "",
+  story: "cowboy",
+};
 
-// ---------------- Helpers ----------------
+const GLOBAL_STYLE_PROMPT =
+  "Children’s picture-book Pixar-style CGI illustration — stylized 3D, rounded shapes, soft painted textures, warm cozy colors, gentle cinematic lighting (key + soft rim), subtle depth of field, expressive eyes, friendly smiles, consistent character design across all pages.";
+
+const CONSISTENCY_RULES = (a) =>
+  `Consistency: ${a.name} is a ${a.gender} with ${a.skin} skin and ${a.hair} hair. Keep the same outfit/accent color (${a.favoriteColor}) every page. Favorite animal (${a.favoriteAnimal}) appears with the same design each page. Setting references ${a.homeTown}. Framing: medium-wide composition with room for text, friendly tone.`;
+
 const childDescriptor = ({ gender, skin, hair }) => {
   const g = (gender || "child").toLowerCase();
   const skinTxt = skin ? `${skin} skin` : "friendly skin tone";
@@ -22,23 +26,208 @@ const childDescriptor = ({ gender, skin, hair }) => {
   return `${g} with ${skinTxt} and ${hairTxt}`;
 };
 
-// ---------------- Page Template Builders ----------------
+// ---------- Page templates ----------
 function cowboyPages(a) {
   const { name, hair, favoriteColor, favoriteAnimal, homeTown, gender, skin } = a;
   const kid = childDescriptor({ gender, skin, hair });
   return [
-    { page: 1, text: `In ${homeTown}, ${name} put on a big ${favoriteColor} cowboy hat. "Yee-haw!" said ${name} with a big smile, sitting on Thunder the gentle horse.`, illustration: `${kid}, wearing a ${favoriteColor} cowboy hat, beside a calm horse named Thunder; small-town ${homeTown} backdrop, warm morning light, picture‑book style, soft edges.` },
-    { page: 2, text: `Suddenly, ${favoriteAnimal} came hopping along. "Do you want to ride with me?" asked ${name}.`, illustration: `${kid} greeting a friendly ${favoriteAnimal}; open field with flowers; welcoming gesture; bright, cozy palette.` },
-    { page: 3, text: `Together they rode slowly across the gentle field. The grass went swish‑swash, swish‑swash.`, illustration: `${kid} riding with ${favoriteAnimal} companion; tall grass swaying; low wind; wide composition showing movement; soft clouds.` },
-    { page: 4, text: `Thunder carried them to the old oak tree. They tied a ribbon and sang a cowboy song.`, illustration: `${kid} at a big oak tree with a colorful ribbon; horse nearby; musical notes doodled; afternoon light through leaves.` },
-    { page: 5, text: `Next, they trotted by the little stream. Splash! ${favoriteAnimal} dipped a paw in the cool water.`, illustration: `${kid} by a clear stream; ${favoriteAnimal} splashing; sparkly water droplets; playful mood.` },
-    { page: 6, text: `They paused by the fence and counted clouds. "One, two, three!" said ${name}.`, illustration: `${kid} pointing at cloud shapes (hat, boot, tiny horse); wide sky; fence in foreground; gentle perspective.` },
-    { page: 7, text: `At the end of the ride, ${name} gave ${favoriteAnimal} a hug. "Being together makes every adventure fun," said ${name}.`, illustration: `${kid} hugging a friendly ${favoriteAnimal}; horse watching kindly; golden-hour glow; heartwarming.` },
-    { page: 8, text: `With the cowboy hat tilted just right, ${name} and ${favoriteAnimal} laughed all the way home.`, illustration: `${kid} riding toward a cozy ${homeTown} horizon; hat tilted cute; sunset colors; storybook finish.` },
+    { page: 1, text: `In ${homeTown}, ${name} put on a big ${favoriteColor} cowboy hat. "Yee-haw!" said ${name} with a big smile, sitting on Thunder the gentle horse.`, illustration: `${GLOBAL_STYLE_PROMPT} ${CONSISTENCY_RULES(a)} Scene: ${kid}, wearing a ${favoriteColor} cowboy hat, beside a calm horse named Thunder; small-town ${homeTown} backdrop, warm morning light.` },
+    { page: 2, text: `Suddenly, ${favoriteAnimal} came hopping along. "Do you want to ride with me?" asked ${name}.`, illustration: `${GLOBAL_STYLE_PROMPT} ${CONSISTENCY_RULES(a)} Scene: ${kid} greeting a friendly ${favoriteAnimal}; open field with flowers; welcoming gesture.` },
+    { page: 3, text: `Together they rode slowly across the gentle field. The grass went swish-swash, swish-swash.`, illustration: `${GLOBAL_STYLE_PROMPT} ${CONSISTENCY_RULES(a)} Scene: ${kid} riding with ${favoriteAnimal} companion; tall grass swaying; wide composition showing movement; soft clouds.` },
+    { page: 4, text: `Thunder carried them to the old oak tree. They tied a ribbon and sang a cowboy song.`, illustration: `${GLOBAL_STYLE_PROMPT} ${CONSISTENCY_RULES(a)} Scene: ${kid} at a big oak tree with a colorful ribbon; horse nearby; afternoon light.` },
+    { page: 5, text: `Next, they trotted by the little stream. Splash! ${favoriteAnimal} dipped a paw in the cool water.`, illustration: `${GLOBAL_STYLE_PROMPT} ${CONSISTENCY_RULES(a)} Scene: ${kid} by a clear stream; ${favoriteAnimal} splashing; sparkly water.` },
+    { page: 6, text: `They paused by the fence and counted clouds. "One, two, three!" said ${name}.`, illustration: `${GLOBAL_STYLE_PROMPT} ${CONSISTENCY_RULES(a)} Scene: ${kid} pointing at cloud shapes (hat, boot, tiny horse); wide sky.` },
+    { page: 7, text: `At the end of the ride, ${name} gave ${favoriteAnimal} a hug. "Being together makes every adventure fun," said ${name}.`, illustration: `${GLOBAL_STYLE_PROMPT} ${CONSISTENCY_RULES(a)} Scene: ${kid} hugging a friendly ${favoriteAnimal}; horse nearby; golden-hour glow.` },
+    { page: 8, text: `With the cowboy hat tilted just right, ${name} and ${favoriteAnimal} laughed all the way home.`, illustration: `${GLOBAL_STYLE_PROMPT} ${CONSISTENCY_RULES(a)} Scene: ${kid} riding toward a cozy ${homeTown} horizon; sunset colors.` },
   ];
 }
 
-// ... shortened for brevity (spacePages, underwaterPages, forestPages identical to earlier)
-export default function StorybookBuilder_Pages_Prompts_PDF_Uploads() {
-  return <div>/* full code here, see earlier export */</div>;
+function spacePages(a) {
+  const { name, hair, favoriteColor, favoriteAnimal, homeTown, gender, skin } = a;
+  const kid = childDescriptor({ gender, skin, hair });
+  return [
+    { page: 1, text: `The countdown echoed in ${homeTown}'s backyard. ${name} held tight to the shiny ${favoriteColor} helmet.`, illustration: `${GLOBAL_STYLE_PROMPT} ${CONSISTENCY_RULES(a)} Scene: ${kid} in a ${favoriteColor} space suit; backyard launch pad; rocket.` },
+    { page: 2, text: `"Ready for launch!" shouted ${name}. ${favoriteAnimal} wiggled into the co-pilot seat.`, illustration: `${GLOBAL_STYLE_PROMPT} ${CONSISTENCY_RULES(a)} Scene: cockpit interior; ${favoriteAnimal} as co-pilot; playful controls.` },
+    { page: 3, text: `Puff, puff… white smoke curled from the engines. Rumble-rumble… the ground shook.`, illustration: `${GLOBAL_STYLE_PROMPT} ${CONSISTENCY_RULES(a)} Scene: liftoff moment.` },
+    { page: 4, text: `3…2…1… Whoooosh! The rocket zoomed into the starry sky.`, illustration: `${GLOBAL_STYLE_PROMPT} ${CONSISTENCY_RULES(a)} Scene: rocket ascending; stars and moon.` },
+    { page: 5, text: `Twinkly stars danced outside the window. "Hello, galaxy!" laughed ${name}.`, illustration: `${GLOBAL_STYLE_PROMPT} ${CONSISTENCY_RULES(a)} Scene: window framing stars; ${kid} smiling.` },
+    { page: 6, text: `Suddenly, space dust swirled across the path. "Oh no, it's too thick!" said ${favoriteAnimal}.`, illustration: `${GLOBAL_STYLE_PROMPT} ${CONSISTENCY_RULES(a)} Scene: colorful nebula dust.` },
+    { page: 7, text: `${name} pressed a big glowing button. Zzzap! A rainbow trail cleared the way.`, illustration: `${GLOBAL_STYLE_PROMPT} ${CONSISTENCY_RULES(a)} Scene: cockpit button press; rainbow trail outside.` },
+    { page: 8, text: `Past the rings of Saturn they zoomed. ${favoriteAnimal} tapped the glass. "Look! Shooting stars!"`, illustration: `${GLOBAL_STYLE_PROMPT} ${CONSISTENCY_RULES(a)} Scene: Saturn rings; interior silhouettes.` },
+    { page: 9, text: `Together they zipped to the Moon and planted a flag: "Friends Forever."`, illustration: `${GLOBAL_STYLE_PROMPT} ${CONSISTENCY_RULES(a)} Scene: lunar surface; Earth in the sky.` },
+    { page: 10, text: `They steered home, hearts full of starlight and big smiles.`, illustration: `${GLOBAL_STYLE_PROMPT} ${CONSISTENCY_RULES(a)} Scene: reentry glow; cozy ${homeTown} night.` },
+  ];
+}
+
+function underwaterPages(a) {
+  const { name, hair, favoriteColor, favoriteAnimal, homeTown, gender, skin } = a;
+  const kid = childDescriptor({ gender, skin, hair });
+  return [
+    { page: 1, text: `In ${homeTown}, ${name} put on a shiny ${favoriteColor} diving mask.`, illustration: `${GLOBAL_STYLE_PROMPT} ${CONSISTENCY_RULES(a)} Scene: ${kid} by shore; ${favoriteColor} mask; gentle waves.` },
+    { page: 2, text: `"Ready to explore?" asked ${name}. ${favoriteAnimal} splashed with a happy wiggle.`, illustration: `${GLOBAL_STYLE_PROMPT} ${CONSISTENCY_RULES(a)} Scene: shoreline splash; ${favoriteAnimal} friendly and consistent.` },
+    { page: 3, text: `Down, down, down they went. Bubbles floated all around.`, illustration: `${GLOBAL_STYLE_PROMPT} ${CONSISTENCY_RULES(a)} Scene: underwater descent; bubble trails; coral.` },
+    { page: 4, text: `Colorful fish peeked from coral caves. One fish blew a bubble kiss!`, illustration: `${GLOBAL_STYLE_PROMPT} ${CONSISTENCY_RULES(a)} Scene: playful fish; coral castle vibe.` },
+    { page: 5, text: `Seaweed blocked the path. "Oh no, it's too twisty!" said ${favoriteAnimal}.`, illustration: `${GLOBAL_STYLE_PROMPT} ${CONSISTENCY_RULES(a)} Scene: ribbon-like seaweed maze.` },
+    { page: 6, text: `${name} hummed a gentle tune. The seaweed swayed aside.`, illustration: `${GLOBAL_STYLE_PROMPT} ${CONSISTENCY_RULES(a)} Scene: musical notes in water; cleared path.` },
+    { page: 7, text: `They swam past a treasure chest half buried in sand. "Next time!" whispered ${name}.`, illustration: `${GLOBAL_STYLE_PROMPT} ${CONSISTENCY_RULES(a)} Scene: old chest; shy crab; sunbeams.` },
+    { page: 8, text: `At last, a tall coral castle appeared. The starfish guards waved.`, illustration: `${GLOBAL_STYLE_PROMPT} ${CONSISTENCY_RULES(a)} Scene: whimsical coral towers; waving starfish.` },
+    { page: 9, text: `When the sun set through the water, they floated up, giggling with sea-sparkles.`, illustration: `${GLOBAL_STYLE_PROMPT} ${CONSISTENCY_RULES(a)} Scene: upward swim; orange-pink rays; surface glow.` },
+  ];
+}
+
+function forestPages(a) {
+  const { name, hair, favoriteColor, favoriteAnimal, homeTown, gender, skin } = a;
+  const kid = childDescriptor({ gender, skin, hair });
+  return [
+    { page: 1, text: `Early in ${homeTown}, the trees whispered hello. ${name} tied the ${favoriteColor} jacket snug.`, illustration: `${GLOBAL_STYLE_PROMPT} ${CONSISTENCY_RULES(a)} Scene: ${kid} at trailhead; ${favoriteColor} jacket; morning mist.` },
+    { page: 2, text: `"Ready to hike?" asked ${name}. ${favoriteAnimal} hopped along happily.`, illustration: `${GLOBAL_STYLE_PROMPT} ${CONSISTENCY_RULES(a)} Scene: forest path; buddy ${favoriteAnimal}.` },
+    { page: 3, text: `Step, step, step — into the forest they went. Tall trees waved hello.`, illustration: `${GLOBAL_STYLE_PROMPT} ${CONSISTENCY_RULES(a)} Scene: towering trees; soft dappled light.` },
+    { page: 4, text: `Birds sang a cheery tune. ${name} whistled back.`, illustration: `${GLOBAL_STYLE_PROMPT} ${CONSISTENCY_RULES(a)} Scene: birds on branches; playful notes.` },
+    { page: 5, text: `They found a log covered in mushrooms. "One, two, three!"`, illustration: `${GLOBAL_STYLE_PROMPT} ${CONSISTENCY_RULES(a)} Scene: cute mushroom log; counting gesture.` },
+    { page: 6, text: `A soft breeze rustled the leaves. "Shh… listen," whispered ${name}.`, illustration: `${GLOBAL_STYLE_PROMPT} ${CONSISTENCY_RULES(a)} Scene: close-up listening pose; leaves flutter.` },
+    { page: 7, text: `They crossed a little wooden bridge. Tap, tap went their feet.`, illustration: `${GLOBAL_STYLE_PROMPT} ${CONSISTENCY_RULES(a)} Scene: wooden bridge over stream; gurgling water.` },
+    { page: 8, text: `They reached a sunny clearing and shared snacks.`, illustration: `${GLOBAL_STYLE_PROMPT} ${CONSISTENCY_RULES(a)} Scene: picnic blanket; ${favoriteAnimal} curled up beside ${name}.` },
+    { page: 9, text: `"Exploring is more fun with friends," said ${name}.`, illustration: `${GLOBAL_STYLE_PROMPT} ${CONSISTENCY_RULES(a)} Scene: sunset through trees; cozy goodbye.` },
+  ];
+}
+
+const builders = { cowboy: cowboyPages, space: spacePages, underwater: underwaterPages, forest: forestPages };
+
+export default function StorybookBuilder_PagesPromptsPDFUploads() {
+  const [form, setForm] = useState(defaultForm);
+  const [pages, setPages] = useState([]);
+  const [images, setImages] = useState({});
+  const fileInputs = useRef({});
+
+  const generated = useMemo(() => (builders[form.story] || cowboyPages)(form), [form]);
+  const handleGenerate = () => setPages(generated);
+
+  const handleImage = async (page, file) => {
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    await new Promise((res) => { img.onload = () => res(true); img.onerror = () => res(true); });
+    img.src = url;
+    const format = (file.type || "").toLowerCase().includes("png") ? "PNG" : "JPEG";
+    setImages((m) => ({ ...m, [page]: { file, url, imgEl: img, format } }));
+  };
+
+  const downloadScriptAndPrompts = () => {
+    const header =
+      `Story: ${form.story}\n` +
+      `Child: ${form.name} (${form.gender}, ${form.skin} skin, ${form.hair} hair)\n` +
+      `Color: ${form.favoriteColor} • Animal: ${form.favoriteAnimal} • Home: ${form.homeTown}\n\n` +
+      `GLOBAL STYLE:\n${GLOBAL_STYLE_PROMPT}\n\n` +
+      `CONSISTENCY:\n${CONSISTENCY_RULES(form)}\n\n`;
+    const body = pages.map((p) => `Page ${p.page}\nText: ${p.text}\nPrompt: ${p.illustration}\n`).join("\n");
+    const blob = new Blob([header + body], { type: "text/plain;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `${form.name || "storybook"}_${form.story}_script_prompts.txt`;
+    a.click();
+  };
+
+  const downloadPDF = async () => {
+    if (!pages.length) return;
+    const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "letter" });
+    const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight(), margin = 36;
+
+    doc.setFont("helvetica", "bold"); doc.setFontSize(28);
+    doc.text(`Story Time with Tim — ${form.story[0].toUpperCase() + form.story.slice(1)}`, W/2, 120, { align: "center" });
+    doc.setFont("helvetica", "normal"); doc.setFontSize(16);
+    doc.text(`${form.name} • ${form.gender} • ${form.skin} skin • ${form.hair} hair`, W/2, 160, { align: "center" });
+    doc.text(`Fav color: ${form.favoriteColor} • Fav animal: ${form.favoriteAnimal} • ${form.homeTown}`, W/2, 185, { align: "center" });
+    doc.setFontSize(11);
+    doc.text("Pixar-style note: images should match prompts and stay visually consistent across all pages.", W/2, 220, { align: "center" });
+
+    pages.forEach((p, idx) => {
+      if (idx !== 0) doc.addPage();
+      const entry = images[p.page];
+      if (entry?.imgEl) {
+        const { imgEl, format } = entry;
+        const boxW = W - margin*2, boxH = H - margin*2 - 120;
+        const ratio = Math.min(boxW / imgEl.width, boxH / imgEl.height);
+        const iw = imgEl.width * ratio, ih = imgEl.height * ratio;
+        const ix = (W - iw)/2, iy = margin;
+        doc.addImage(imgEl, format || "JPEG", ix, iy, iw, ih);
+      } else {
+        doc.setDrawColor(180); doc.setLineWidth(1);
+        doc.rect(margin, margin, W - margin*2, H - margin*2 - 120);
+        doc.setFontSize(12);
+        doc.text("No image uploaded for this page yet.", W/2, H/2 - 20, { align: "center" });
+      }
+      doc.setFont("helvetica", "bold"); doc.setFontSize(16);
+      doc.text(`Page ${p.page}`, margin, H - margin - 90);
+      doc.setFont("helvetica", "normal"); doc.setFontSize(12);
+      const text = doc.splitTextToSize(p.text, W - margin*2);
+      doc.text(text, margin, H - margin - 70);
+    });
+
+    doc.save(`${form.name || "storybook"}_${form.story}_picturebook.pdf`);
+  };
+
+  return (
+    <div className="grid two" style={{ alignItems: "start" }}>
+      <div className="card sticky">
+        <h2>Child & Story Info</h2>
+        <div className="grid two">
+          <div><label>Child's Name</label><input value={form.name} onChange={(e)=>setForm({...form, name:e.target.value})} placeholder="e.g., Mia" /></div>
+          <div><label>Gender</label><select value={form.gender} onChange={(e)=>setForm({...form, gender:e.target.value})}><option>child</option><option>girl</option><option>boy</option><option>kid</option></select></div>
+          <div><label>Skin Tone</label><select value={form.skin} onChange={(e)=>setForm({...form, skin:e.target.value})}><option>light</option><option>tan</option><option>dark</option></select></div>
+          <div><label>Hair</label><input value={form.hair} onChange={(e)=>setForm({...form, hair:e.target.value})} placeholder="e.g., brown, curly" /></div>
+          <div><label>Favorite Color</label><input value={form.favoriteColor} onChange={(e)=>setForm({...form, favoriteColor:e.target.value})} placeholder="e.g., purple" /></div>
+          <div><label>Favorite Animal</label><input value={form.favoriteAnimal} onChange={(e)=>setForm({...form, favoriteAnimal:e.target.value})} placeholder="e.g., bunny" /></div>
+          <div><label>Favorite Place / Home Town</label><input value={form.homeTown} onChange={(e)=>setForm({...form, homeTown:e.target.value})} placeholder="e.g., the park; Columbia" /></div>
+          <div><label>Story Choice</label><select value={form.story} onChange={(e)=>setForm({...form, story:e.target.value})}><option value="cowboy">🐎 Cowboy Adventure</option><option value="space">🚀 Space Ranger Saga</option><option value="underwater">🌊 Underwater Voyage</option><option value="forest">🌲 Exploring the Forest</option></select></div>
+        </div>
+
+        <div className="row" style={{ marginTop: 12 }}>
+          <button onClick={handleGenerate}>Generate Pages</button>
+          <button className="secondary" onClick={downloadScriptAndPrompts}>Download Script + Prompts (TXT)</button>
+          <button className="secondary" onClick={downloadPDF}>Export Picture-Book PDF</button>
+        </div>
+
+        <div style={{ marginTop: 12 }}>
+          <span className="pill mono">Pixar-style</span>
+          <span className="pill mono">Consistent outfits & animal</span>
+          <span className="pill mono">Room for text</span>
+        </div>
+      </div>
+
+      <div className="grid" style={{ gap: 16 }}>
+        <div className="card">
+          <h2>Global Illustration Notes</h2>
+          <p className="small"><strong>Style:</strong> {GLOBAL_STYLE_PROMPT}</p>
+          <p className="small"><strong>Consistency:</strong> {CONSISTENCY_RULES(form)}</p>
+        </div>
+
+        {pages.length === 0 && (
+          <div className="card">
+            <p className="muted">Click <strong>Generate Pages</strong> to build the page texts and prompts.</p>
+          </div>
+        )}
+
+        {pages.map((p) => (
+          <div className="page" key={p.page}>
+            <div className="grid two">
+              <div>
+                <div className="thumb">{images[p.page]?.url ? <img src={images[p.page].url} alt={`Page ${p.page}`} /> : <span className="muted small">Upload an image for this page</span>}</div>
+                <div className="row" style={{ marginTop: 8 }}>
+                  <input type="file" accept="image/*" onChange={(e)=>handleImage(p.page, e.target.files?.[0])} ref={(el)=>fileInputs.current[p.page]=el} />
+                  <button className="secondary" onClick={()=>{ setImages(m=>({ ...m, [p.page]: undefined })); if(fileInputs.current[p.page]) fileInputs.current[p.page].value=""; }}>Clear</button>
+                </div>
+              </div>
+              <div>
+                <h3 style={{ marginTop: 0 }}>Page {p.page}</h3>
+                <label>Story Text</label>
+                <textarea value={p.text} onChange={(e)=>{ const v=e.target.value; setPages(prev => prev.map(x => x.page===p.page ? {...x, text:v} : x)); }} />
+                <label style={{ marginTop: 8 }}>Illustration Prompt (editable)</label>
+                <textarea value={p.illustration} onChange={(e)=>{ const v=e.target.value; setPages(prev => prev.map(x => x.page===p.page ? {...x, illustration:v} : x)); }} />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
