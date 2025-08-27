@@ -4,6 +4,32 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>PopPop Builder</title>
+    <style>
+      :root { --bg:#0b0b0c; --card:#141415; --ink:#e8e8ea; --muted:#a0a0a6; --brand:#63b3ed; }
+      *{box-sizing:border-box}
+      body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink)}
+      .wrap{max-width:1100px;margin:0 auto;padding:24px}
+      .grid{display:grid;gap:12px}
+      .two{grid-template-columns:repeat(2,minmax(0,1fr))}
+      .three{grid-template-columns:repeat(3,minmax(0,1fr))}
+      .card{background:var(--card);border-radius:16px;padding:18px;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+      h1{margin:.2em 0 .3em;font-size:28px}
+      h2{margin:0 0 .6em;font-size:20px}
+      label{font-size:12px;color:var(--muted);display:block;margin-bottom:6px}
+      input, select, textarea{width:100%;padding:10px 12px;border-radius:10px;border:1px solid #303035;background:#0f0f10;color:var(--ink)}
+      textarea{min-height:84px}
+      button{background:var(--brand);border:0;padding:10px 14px;border-radius:12px;color:#05243a;font-weight:600;cursor:pointer}
+      button.secondary{background:#26262a;color:var(--ink)}
+      .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+      .muted{color:var(--muted)}
+      .thumb{width:100%;height:180px;background:#0e0e10;border:1px dashed #2f2f35;border-radius:12px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+      .thumb img{width:100%;height:100%;object-fit:cover}
+      .page{border:1px solid #2f2f35;border-radius:12px;padding:12px;background:#0f0f10}
+      .small{font-size:12px}
+      .sticky{position:sticky;top:10px}
+      .mono{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;}
+      .pill{display:inline-block;background:#1f2937;color:#d1d5db;border-radius:999px;padding:4px 10px;font-size:12px;margin-right:6px}
+    </style>
   </head>
   <body>
     <div id="root"></div>
