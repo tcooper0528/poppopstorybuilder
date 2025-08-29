@@ -1,0 +1,11 @@
+# tailwind + postcss
+npm i -D tailwindcss postcss autoprefixer
+npx tailwindcss init -p
+
+# shadcn/ui deps used by components
+npm i clsx tailwind-merge lucide-react
+# (shadcn CLI pulls components into your repo)
+npx shadcn@latest init -y
+
+# add the actual UI components the builder imports
+npx shadcn@latest add card button input label textarea switch slider tabs select
