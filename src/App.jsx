@@ -1,3 +1,9 @@
-import React from 'react'
-import StorybookBuilder from './components/StorybookBuilder_PagesPromptsPDFUploads.jsx'
-export default function App(){return (<div style={{padding:24}}><h1>PopPop Builder — Storybook Pages + Prompts + Picture-PDF</h1><StorybookBuilder /></div>)}
+import UnifiedStorybookBuilder from "./UnifiedStorybookBuilder";
+
+export default function App() {
+  return (
+    <div className="min-h-screen bg-background text-foreground">
+      <UnifiedStorybookBuilder />
+    </div>
+  );
+}
