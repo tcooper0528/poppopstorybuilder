@@ -1,308 +1,446 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { Slider } from "@/components/ui/slider";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
 import { jsPDF } from "jspdf";
 
 /**
- * Storybook Builder WITH Global Consistency Prompt
- * ------------------------------------------------
- * - Collects child details (incl. gender + skin tone).
- * - Lets you choose 1 of 4 adventures.
- * - Generates page-by-page STORY TEXT + ILLUSTRATION PROMPTS.
- * - Every illustration prompt is automatically prefixed with a Global Style
- *   block to enforce one consistent Pixar-style look across all pages.
- * - Optional: Upload one image per page (kept in-memory previews) and export a PDF
- *   that lays out each page as [Image (if any)] + [Story text] + [Illustration prompt].
+ * UnifiedStorybookBuilder.jsx
+ * --------------------------------------------------------------
+ * ONE SCREEN to: (1) define the SAFE generic character, (2) generate story pages & prompts,
+ * (3) render or upload images per page, and (4) export a final PDF.
+ *
+ * Notes:
+ * - Never uses real photos. Character is a generic archetype (BoyBase/GirlBase) with parameters.
+ * - Exposes a single `apiPayload` that backends can use to render images consistently.
+ * - If you don't have a renderer yet, you can upload images per page and still export a PDF.
  */
 
-// ---------------- Global, Editable Style Block ----------------
-const DEFAULT_GLOBAL_STYLE = `Children’s picture-book Pixar-style CGI illustration — stylized 3D, rounded shapes, soft painted textures, warm cozy colors, gentle cinematic lighting (key + soft rim), subtle depth of field, expressive eyes, friendly smiles, consistent character design across all pages.`;
+// ---------------- Character Options ----------------
+const SKIN_PRESETS = [
+  { id: "fair", label: "Fair", hex: "#f4dccb" },
+  { id: "light", label: "Light", hex: "#eac3a4" },
+  { id: "tan", label: "Tan", hex: "#c99774" },
+  { id: "brown", label: "Brown", hex: "#8a5a3b" },
+  { id: "dark", label: "Dark", hex: "#5a3928" },
+];
 
-// Build a single consistency blurb that gets prepended to every page prompt.
-function consistencyBlock({ name, gender, skin, hair, favoriteColor, favoriteAnimal, homeTown }) {
-  const g = (gender || "child").toLowerCase();
-  const skinTxt = skin ? `${skin} skin` : "friendly skin tone";
-  const hairTxt = hair ? `${hair} hair` : "neat hair";
-  return (
-    `Consistency: ${name} is a ${g} with ${skinTxt} and ${hairTxt}. ` +
-    `Keep the same outfit/accent color (${favoriteColor}) every page. ` +
-    `Favorite animal (${favoriteAnimal}) appears with the same design each page. ` +
-    `Setting references ${homeTown}. Framing: medium-wide composition with room for text; friendly, cozy tone.`
-  );
-}
+const HAIR_COLORS = [
+  { id: "black", label: "Black", hex: "#2a2a2a" },
+  { id: "brown", label: "Brown", hex: "#5a3a22" },
+  { id: "blonde", label: "Blonde", hex: "#e2c36a" },
+  { id: "red", label: "Red", hex: "#b44b2d" },
+  { id: "gray", label: "Gray", hex: "#9aa0a6" },
+];
 
-function prefixPrompt(globalStyle, consistency, specific) {
-  return `${globalStyle}\n${consistency}\n\nScene: ${specific}`;
-}
+const EYE_COLORS = [
+  { id: "brown", label: "Brown" },
+  { id: "blue", label: "Blue" },
+  { id: "green", label: "Green" },
+  { id: "hazel", label: "Hazel" },
+];
 
-// ---------------- Page Template Builders ----------------
-function cowboyPages(a, globalStyle) {
-  const { name, hair, favoriteColor, favoriteAnimal, homeTown } = a;
-  const cb = consistencyBlock(a);
-  return [
-    {
-      page: 1,
-      text: `In ${homeTown}, ${name} put on a big ${favoriteColor} cowboy hat. "Yee-haw!" said ${name} with a big smile, sitting on Thunder the gentle horse.`,
-      illustration: prefixPrompt(globalStyle, cb, `${name} (with ${hair} hair) wearing a big ${favoriteColor} cowboy hat, sitting gently on Thunder (kind horse). ${favoriteAnimal} nearby; cozy small-town ${homeTown} backdrop; warm morning light.`),
-    },
-    {
-      page: 2,
-      text: `Suddenly, ${favoriteAnimal} came hopping along. "Do you want to ride with me?" asked ${name}.`,
-      illustration: prefixPrompt(globalStyle, cb, `${name} greeting a friendly ${favoriteAnimal}; open flowered field; welcoming gesture.`),
-    },
-    {
-      page: 3,
-      text: `Together they rode slowly across the gentle field. The grass went swish‑swash, swish‑swash.`,
-      illustration: prefixPrompt(globalStyle, cb, `${name} riding Thunder with ${favoriteAnimal} companion; tall grass swaying; wide view showing calm movement; soft clouds.`),
-    },
-    {
-      page: 4,
-      text: `Thunder carried them to the old oak tree. They tied a ribbon and sang a cowboy song.`,
-      illustration: prefixPrompt(globalStyle, cb, `${name} under a big oak; colorful ribbon tied; horse beside; whimsical musical notes; dappled afternoon light.`),
-    },
-    {
-      page: 5,
-      text: `Next, they trotted by the little stream. Splash! ${favoriteAnimal} dipped a paw in the cool water.`,
-      illustration: prefixPrompt(globalStyle, cb, `${name} at a clear stream; ${favoriteAnimal} splashing playfully; sparkly droplets.`),
-    },
-    {
-      page: 6,
-      text: `They paused by the fence and counted clouds. "One, two, three!" said ${name}.`,
-      illustration: prefixPrompt(globalStyle, cb, `${name} pointing at cloud shapes (hat, boot, tiny horse); fence in foreground; big sky.`),
-    },
-    {
-      page: 7,
-      text: `At the end of the ride, ${name} gave ${favoriteAnimal} a hug. "Being together makes every adventure fun," said ${name}.`,
-      illustration: prefixPrompt(globalStyle, cb, `Heartwarming hug between ${name} and ${favoriteAnimal}; Thunder watching kindly; golden-hour glow.`),
-    },
-    {
-      page: 8,
-      text: `With the cowboy hat tilted just right, ${name} and ${favoriteAnimal} laughed all the way home.`,
-      illustration: prefixPrompt(globalStyle, cb, `${name} riding toward a cozy ${homeTown} horizon; hat tilted cute; sunset colors.`),
-    },
-  ];
-}
+const OUTFIT_SWATCHES = [
+  { id: "red", label: "Red", hex: "#e74c3c" },
+  { id: "blue", label: "Blue", hex: "#3498db" },
+  { id: "green", label: "Green", hex: "#2ecc71" },
+  { id: "purple", label: "Purple", hex: "#8e44ad" },
+  { id: "yellow", label: "Yellow", hex: "#f1c40f" },
+  { id: "pink", label: "Pink", hex: "#ff6fb1" },
+];
 
-function spacePages(a, globalStyle) {
-  const { name, favoriteColor, favoriteAnimal, homeTown } = a;
-  const cb = consistencyBlock(a);
-  return [
-    { page: 1, text: `The countdown echoed in ${homeTown}’s backyard. ${name} held tight to the shiny ${favoriteColor} helmet.`, illustration: prefixPrompt(globalStyle, cb, `${name} in launch prep beside a small backyard rocket; helmet ${favoriteColor}; friendly ${favoriteAnimal} ready as co‑pilot.`) },
-    { page: 2, text: `"Ready for launch!" shouted ${name}. ${favoriteAnimal} wiggled into the co‑pilot seat.`, illustration: prefixPrompt(globalStyle, cb, `Cockpit close‑up; ${name} smiling; ${favoriteAnimal} strapped in adorably.`) },
-    { page: 3, text: `Puff, puff… white smoke curled from the rocket engines. Rumble‑rumble… the ground shook with excitement.`, illustration: prefixPrompt(globalStyle, cb, `Backyard launch pad; gentle smoke plumes; neighbors’ fences; safe, kid‑friendly vibe.`) },
-    { page: 4, text: `3…2…1… Whoooosh! The rocket zoom‑zoomed into the starry sky.`, illustration: prefixPrompt(globalStyle, cb, `Rocket lifting off; soft streaks; early evening sky with first stars.`) },
-    { page: 5, text: `Twinkly stars danced outside the window. "Hello, galaxy!" said ${name} with a laugh.`, illustration: prefixPrompt(globalStyle, cb, `Interior cockpit; round window; playful star field; cozy instrument lights.`) },
-    { page: 6, text: `Suddenly, space dust swirled across the path. "Oh no, it’s too thick!" said ${favoriteAnimal}.`, illustration: prefixPrompt(globalStyle, cb, `Soft, glittery dust cloud obscuring path; mild stakes; friendly faces.`) },
-    { page: 7, text: `${name} pressed a big glowing button. Zzzap! A rainbow trail cleared the way.`, illustration: prefixPrompt(globalStyle, cb, `Rainbow clearing beam from the rocket; dust parts gently; whimsical effect.`) },
-    { page: 8, text: `Past the rings of Saturn they zoomed. ${favoriteAnimal} tapped the glass. "Look! Shooting stars!"`, illustration: prefixPrompt(globalStyle, cb, `Exterior pass by Saturn’s rings; cockpit silhouettes of ${name} and ${favoriteAnimal}.`) },
-    { page: 9, text: `Together they zipped to the Moon. They planted a flag that read, "Friends Forever."`, illustration: prefixPrompt(globalStyle, cb, `Moon surface; small flag with friendly lettering; Earth glowing above.`) },
-    { page: 10, text: `At the end of the adventure, ${name} and ${favoriteAnimal} steered home, hearts full of starlight and big smiles.`, illustration: prefixPrompt(globalStyle, cb, `Return flight toward cozy ${homeTown}; stars trailing like confetti.`) },
-  ];
-}
-
-function underwaterPages(a, globalStyle) {
-  const { name, hair, favoriteColor, favoriteAnimal, homeTown } = a;
-  const cb = consistencyBlock(a);
-  return [
-    { page: 1, text: `In ${homeTown}, ${name} put on a shiny ${favoriteColor} diving mask. Their ${hair} hair was tucked safely under the strap.`, illustration: prefixPrompt(globalStyle, cb, `${name} adjusting a bright ${favoriteColor} mask at shore; ${favoriteAnimal} splashing beside; gentle waves.`) },
-    { page: 2, text: `"Ready to explore?" asked ${name}. ${favoriteAnimal} splashed with a happy wiggle.`, illustration: prefixPrompt(globalStyle, cb, `Shallow water entry; playful splash; sunlight ripples on water.`) },
-    { page: 3, text: `Down, down, down they went. Bubbles floated all around.`, illustration: prefixPrompt(globalStyle, cb, `Underwater descent; bubbly trail; curious faces.`) },
-    { page: 4, text: `Colorful fish peeked out from coral caves. One fish blew a bubble kiss that made ${name} laugh.`, illustration: prefixPrompt(globalStyle, cb, `Coral garden; cute fish interaction; soft caustics.`) },
-    { page: 5, text: `Suddenly, the path was blocked by seaweed. "Oh no, it’s too twisty!" said ${favoriteAnimal}.`, illustration: prefixPrompt(globalStyle, cb, `Drifty seaweed forming a gentle maze; mild challenge.`) },
-    { page: 6, text: `${name} hummed a gentle tune. The seaweed swayed and slowly moved aside.`, illustration: prefixPrompt(globalStyle, cb, `Musical hum represented with soft notes; seaweed parting.`) },
-    { page: 7, text: `Deeper they swam, past a treasure chest half buried in sand. "Let’s open it next time!" whispered ${name}.`, illustration: prefixPrompt(globalStyle, cb, `Half‑buried chest catching light beams; promise of future fun.`) },
-    { page: 8, text: `At last they reached a tall coral castle. Together they waved to the starfish guards.`, illustration: prefixPrompt(globalStyle, cb, `Coral castle silhouette; cute starfish like sentries; wide view.`) },
-    { page: 9, text: `When the sun set through the water, ${name} and ${favoriteAnimal} floated back up, hearts full of giggles and sea‑sparkles.`, illustration: prefixPrompt(globalStyle, cb, `Ascend toward warm evening surface glow; content smiles.`) },
-  ];
-}
-
-function forestPages(a, globalStyle) {
-  const { name, hair, favoriteColor, favoriteAnimal, homeTown } = a;
-  const cb = consistencyBlock(a);
-  return [
-    { page: 1, text: `Early in ${homeTown}, the trees whispered hello. ${name} brushed their ${hair} hair and tied the ${favoriteColor} jacket snug.`, illustration: prefixPrompt(globalStyle, cb, `Trailhead under tall trees; ${name} adjusting ${favoriteColor} jacket; ${favoriteAnimal} ready to go.`) },
-    { page: 2, text: `"Ready to hike?" asked ${name}. ${favoriteAnimal} wagged, chirped, or hopped along happily.`, illustration: prefixPrompt(globalStyle, cb, `Sunny path; happy movement; playful leaves.`) },
-    { page: 3, text: `Step, step, step — into the forest they went. Tall trees reached high like giants waving hello.`, illustration: prefixPrompt(globalStyle, cb, `Grand vertical trees; tiny travelers; welcoming vibe.`) },
-    { page: 4, text: `Birds sang a cheery tune. ${name} whistled back, and ${favoriteAnimal} clapped its paws.`, illustration: prefixPrompt(globalStyle, cb, `Birds on branches; musical notes; joyful faces.`) },
-    { page: 5, text: `Soon they found a log covered in mushrooms. "One, two, three!" counted ${name}. ${favoriteAnimal} sniffed and made a silly face.`, illustration: prefixPrompt(globalStyle, cb, `Mushroom log close‑up; gentle humor; soft dappled light.`) },
-    { page: 6, text: `A soft breeze rustled the leaves. "Shh… listen," whispered ${name}. The forest told tiny secrets in the wind.`, illustration: prefixPrompt(globalStyle, cb, `Leaves shimmering; quiet moment; listening pose.`) },
-    { page: 7, text: `Deeper in, they discovered a little wooden bridge. Tap, tap went their feet across. Beneath, the stream gurgled happily.`, illustration: prefixPrompt(globalStyle, cb, `Small wooden bridge; brook beneath; footsteps “tap tap.”`) },
-    { page: 8, text: `At last, they reached a sunny clearing. Together they sat in the grass, sharing snacks. ${favoriteAnimal} curled up beside ${name}.`, illustration: prefixPrompt(globalStyle, cb, `Sunny meadow; picnic vibe; cozy companionship.`) },
-    { page: 9, text: `"Exploring is more fun with friends," said ${name}. The forest agreed with a gentle hush, as the trees whispered one more goodnight.`, illustration: prefixPrompt(globalStyle, cb, `Warm golden finish; trees framing; peaceful farewell.`) },
-  ];
-}
-
-const STORY_FNS = {
-  cowboy: cowboyPages,
-  space: spacePages,
-  underwater: underwaterPages,
-  forest: forestPages,
+const DEFAULT_POSE_PLAN = {
+  cowboy: ["hat_on_horse", "ride_meadow", "wave_friend", "counting_gesture", "campfire_smile", "high_five", "treasure_glint", "home_hug"],
+  space: ["helmet_on", "rocket_window", "zero_g_float", "button_point", "asteroid_dodge", "moon_wave", "comet_hi", "landing_pose"],
+  underwater: ["goggles_on", "wave_glide", "fish_friend", "treasure_peek", "bubble_count", "dolphin_wave", "kelp_hide", "sunny_surface"],
+  forest: ["hat_adjust", "trail_walk", "animal_meet", "mushroom_log_count", "bridge_cross", "bird_listen", "camp_set", "home_return"],
 };
+const DEFAULT_SEEDS = [18733, 22119, 33007, 44011, 55001, 66013, 77021, 88031];
 
-// ---------------- UI ----------------
-export default function StorybookBuilderWithGlobalPrompt() {
-  const [choice, setChoice] = useState("cowboy");
-  const [answers, setAnswers] = useState({
-    name: "",
-    gender: "child",
-    skin: "tan",
-    hair: "brown",
-    favoriteColor: "green",
-    favoriteAnimal: "dog",
-    homeTown: "Columbia",
-  });
-  const [globalStyle, setGlobalStyle] = useState(DEFAULT_GLOBAL_STYLE);
-  const [pages, setPages] = useState([]);
-  const fileInputsRef = useRef({}); // per‑page file inputs
-  const [images, setImages] = useState({}); // { pageNumber: dataURL }
+function Swatch({ hex }) {
+  return <div className="w-5 h-5 rounded-full border" style={{ background: hex }} />;
+}
 
-  const handleGenerate = () => {
-    const builder = STORY_FNS[choice];
-    if (!builder) return;
-    const pg = builder(answers, globalStyle);
-    setPages(pg);
+// ---------------- Story Templates (8–10 pages, 3–5yo tone) ----------------
+function buildStoryPages(story, a) {
+  const { name, hair, favoriteColor, favoriteAnimal, homeTown } = a;
+  const base = {
+    cowboy: [
+      `In ${homeTown}, ${name} put on a big ${favoriteColor} cowboy hat. "Yee-haw!" said ${name} as they sat on Thunder, the gentle horse.`,
+      `Suddenly, ${favoriteAnimal} came hopping along. "Want to ride?" asked ${name}.`,
+      `They trotted across the gentle field. Swish-swash went the grass.`,
+      `They stopped at the old oak tree and sang a cowboy song.`,
+      `By the little stream—splash! ${favoriteAnimal} dipped a paw.`,
+      `They counted cloud shapes: hats, boots, a tiny horse.`,
+      `A warm hug: "Being together makes adventures fun," said ${name}.`,
+      `With the hat tilted just right, they laughed all the way home.`,
+    ],
+    space: [
+      `The countdown echoed in ${homeTown}. ${name} held a shiny ${favoriteColor} helmet.`,
+      `"Ready for launch!" ${name} said. ${favoriteAnimal} took the co‑pilot seat.`,
+      `Puff, puff… smoke curled from the engines.`,
+      `3…2…1… Whoooosh! Up into the stars!`,
+      `Twinkly stars danced. "Hello, galaxy!"`,
+      `Space dust swirled. "It’s too thick!" said ${favoriteAnimal}.`,
+      `${name} pressed the glowing button—Zzzap! A rainbow trail appeared.`,
+      `They planted a flag on the Moon: "Friends Forever".`,
+    ],
+    underwater: [
+      `In ${homeTown}, ${name} put on a ${favoriteColor} diving mask.`,
+      `"Ready to explore?" asked ${name}. ${favoriteAnimal} wiggled beside them.`,
+      `Down, down, down they went. Bubbles followed.`,
+      `Colorful fish peeked from coral caves.`,
+      `Seaweed blocked the path. "Too twisty!"`,
+      `${name} hummed a tune. The seaweed swayed aside.`,
+      `A half‑buried treasure chest! "Next time," they whispered.`,
+      `They waved to starfish guards at a coral castle.`,
+    ],
+    forest: [
+      `Morning in ${homeTown}. ${name} tied their ${favoriteColor} jacket snug.`,
+      `"Ready to hike?" ${favoriteAnimal} hopped along.`,
+      `Step, step—into the woods. Tall trees waved hello.`,
+      `Birds sang a cheery tune.`,
+      `A log with mushrooms. "One, two, three!"`,
+      `Soft breeze. "Shh… listen," whispered ${name}.`,
+      `They found a little bridge. Tap, tap across!`,
+      `Sunny clearing. Snacks and giggles.`,
+    ],
   };
 
-  const handleImageChange = async (page, file) => {
+  return base[story].map((text, i) => ({ page: i + 1, text }));
+}
+
+function buildPromptTemplate(story, spec) {
+  const base = `Children’s picture-book Pixar-style CGI — stylized 3D, rounded shapes, soft textures, warm cozy colors, gentle cinematic lighting (key + soft rim), subtle depth of field, expressive eyes, friendly smiles, consistent character design. Character: ${spec.archetype} kid, ${spec.attributes.skin.id} skin, ${spec.attributes.hair.color} ${spec.attributes.hair.style} hair, ${spec.attributes.eyes} eyes, outfit with ${spec.attributes.outfit.accent.id} accents${spec.attributes.hat ? ", wearing " + spec.attributes.hat.replace("_"," ") : ""}.`;
+  const sceneBits = {
+    cowboy: "wide, gentle countryside; small-town far background; soft morning light; friendly horse recurring;",
+    space: "spaceship interior/exterior; twinkly stars; soft glow; recurring rocket elements;",
+    underwater: "clear shallow sea; corals and friendly fish; sunbeams through water; recurring bubbles motif;",
+    forest: "sun-dappled woods; cozy trail and friendly animals; soft mist; recurring backpack/cap;",
+  };
+  return `${base}\nSetting: ${sceneBits[story]}\nFraming: medium-wide composition with room for text; friendly, warm tone.\nConsistency: keep same face, hairstyle, outfit accents, proportions, accessory positions across pages; same animal companion if present.\nNegative: off-model face, extra fingers, harsh contrast, text artifacts.`;
+}
+
+export default function UnifiedStorybookBuilder() {
+  // 1) CHARACTER (safe archetype)
+  const [archetype, setArchetype] = useState("BoyBase");
+  const [name, setName] = useState("");
+  const [skin, setSkin] = useState("tan");
+  const [hairColor, setHairColor] = useState("brown");
+  const [hairStyle, setHairStyle] = useState("short");
+  const [eyes, setEyes] = useState("brown");
+  const [accentColor, setAccentColor] = useState("blue");
+  const [favoriteAnimal, setFavoriteAnimal] = useState("");
+  const [homeTown, setHomeTown] = useState("");
+  const [includeHat, setIncludeHat] = useState(true);
+  const [hatName, setHatName] = useState("cowboy");
+  const [styleStrength, setStyleStrength] = useState(0.85);
+
+  // 2) STORY choice + page texts
+  const [story, setStory] = useState("cowboy");
+  const pages = useMemo(() => buildStoryPages(story, { name: name || (archetype === "BoyBase" ? "Buddy" : "Sunny"), hair: hairColor, favoriteColor: accentColor, favoriteAnimal: favoriteAnimal || "bunny", homeTown: homeTown || "the park" }), [story, name, archetype, hairColor, accentColor, favoriteAnimal, homeTown]);
+
+  // 3) RENDER plan (pose + seed) & prompt template
+  const skinHex = SKIN_PRESETS.find(s => s.id === skin)?.hex || "#c99774";
+  const outfitHex = OUTFIT_SWATCHES.find(s => s.id === accentColor)?.hex || "#3498db";
+  const characterSpec = useMemo(() => ({
+    archetype,
+    name: name || (archetype === "BoyBase" ? "Buddy" : "Sunny"),
+    attributes: {
+      skin: { id: skin, hex: skinHex },
+      hair: { color: hairColor, style: hairStyle },
+      eyes,
+      outfit: { accent: { id: accentColor, hex: outfitHex } },
+      hat: includeHat ? hatName : null,
+      favoriteAnimal: favoriteAnimal || null,
+      homeTown: homeTown || null,
+    },
+    style: { lora: "lora://storybook_pixarish", weight: styleStrength },
+    safety: { usesRealPhotos: false, description: "Generic non-photographic archetype." },
+  }), [archetype, name, skin, skinHex, hairColor, hairStyle, eyes, accentColor, outfitHex, includeHat, hatName, favoriteAnimal, homeTown, styleStrength]);
+
+  const renderPlan = useMemo(() => DEFAULT_POSE_PLAN[story].map((pose, i) => ({ page: i + 1, pose, seed: DEFAULT_SEEDS[i] })), [story]);
+  const promptTemplate = useMemo(() => buildPromptTemplate(story, characterSpec), [story, characterSpec]);
+
+  // 4) Images per page (upload or render)
+  const [images, setImages] = useState({}); // { [page]: dataUrl }
+
+  async function handleUpload(e, page) {
+    const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => {
-      setImages((prev) => ({ ...prev, [page]: reader.result }));
-    };
+    reader.onload = () => setImages(prev => ({ ...prev, [page]: reader.result }));
     reader.readAsDataURL(file);
-  };
+  }
 
-  const exportPDF = async () => {
-    if (!pages.length) return;
+  async function handleRender(pageIdx) {
+    // Minimal example: call your backend renderer
+    const { seed, pose } = renderPlan[pageIdx];
+    const body = {
+      characterSpec, story, pageIndex: pageIdx, sceneText: pages[pageIdx].text, renderPlan, promptTemplate,
+    };
+    try {
+      const r = await fetch("/render-page", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const out = await r.json();
+      if (out?.imageUrl) setImages(prev => ({ ...prev, [pageIdx + 1]: out.imageUrl }));
+    } catch (e) {
+      console.error(e);
+      alert("Render failed. You can upload a placeholder image while we debug the renderer.");
+    }
+  }
+
+  function exportPDF() {
     const doc = new jsPDF({ unit: "pt", format: "letter" });
-
     pages.forEach((p, idx) => {
       if (idx > 0) doc.addPage();
-
-      const margin = 48;
-      let y = margin;
-
-      // Image block (optional)
-      const dataURL = images[p.page];
-      if (dataURL) {
-        try {
-          // fit width to page minus margins, keep aspect by providing width only
-          const pageW = doc.internal.pageSize.getWidth();
-          const imgW = pageW - margin * 2;
-          const imgH = (imgW * 9) / 16; // safe default aspect box
-          doc.addImage(dataURL, "JPEG", margin, y, imgW, imgH, undefined, "FAST");
-          y += imgH + 16;
-        } catch (e) {
-          // ignore image errors and continue with text
-        }
-      }
-
-      doc.setFont("Times", "bold");
       doc.setFontSize(14);
-      doc.text(`Page ${p.page}`, margin, y);
-      y += 18;
-
-      doc.setFont("Times", "normal");
+      doc.text(`Page ${p.page}`, 40, 50);
       doc.setFontSize(12);
-
-      // Story text
-      const storyLines = doc.splitTextToSize(p.text, 540);
-      doc.text(storyLines, margin, y);
-      y += storyLines.length * 14 + 12;
-
-      // Illustration prompt (smaller)
-      doc.setFontSize(10);
-      doc.setTextColor(80);
-      const promptLines = doc.splitTextToSize(`Illustration Prompt:\n${p.illustration}`, 540);
-      doc.text(promptLines, margin, y);
-      doc.setTextColor(0);
+      doc.text(p.text, 40, 80, { maxWidth: 520 });
+      const img = images[p.page];
+      if (img) {
+        // Fit image within a nice rectangle
+        const x = 40, y = 140, w = 520, h = 360;
+        doc.addImage(img, "PNG", x, y, w, h, undefined, "FAST");
+      }
     });
+    doc.save(`${characterSpec.name}_${story}_storybook.pdf`);
+  }
 
-    const filename = `${answers.name || "Story"}_${choice}_storybook.pdf`;
-    doc.save(filename);
-  };
+  const apiPayload = useMemo(() => ({ characterSpec, story, renderPlan, promptTemplate, pages, workflow: { baseModel: "flux.1-schnell", styleLoRA: characterSpec.style.lora, characterLoRA: archetype === "BoyBase" ? "lora://kid_boy_base" : "lora://kid_girl_base", controlNet: "openpose" } }), [characterSpec, story, renderPlan, promptTemplate, pages, archetype]);
+
+  const json = useMemo(() => JSON.stringify(apiPayload, null, 2), [apiPayload]);
 
   return (
-    <div className="mx-auto max-w-5xl p-6 space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Story Time with Tim — Builder (Global Consistency Prompt)</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <Input placeholder="Child's Name" value={answers.name} onChange={(e) => setAnswers({ ...answers, name: e.target.value })} />
-            <Input placeholder="Gender (boy/girl/child)" value={answers.gender} onChange={(e) => setAnswers({ ...answers, gender: e.target.value })} />
-            <Input placeholder="Skin (light/tan/dark)" value={answers.skin} onChange={(e) => setAnswers({ ...answers, skin: e.target.value })} />
-            <Input placeholder="Hair (e.g., brown)" value={answers.hair} onChange={(e) => setAnswers({ ...answers, hair: e.target.value })} />
-            <Input placeholder="Favorite Color" value={answers.favoriteColor} onChange={(e) => setAnswers({ ...answers, favoriteColor: e.target.value })} />
-            <Input placeholder="Favorite Animal" value={answers.favoriteAnimal} onChange={(e) => setAnswers({ ...answers, favoriteAnimal: e.target.value })} />
-            <Input placeholder="Home Town / Place" value={answers.homeTown} onChange={(e) => setAnswers({ ...answers, homeTown: e.target.value })} />
+    <div className="p-6 max-w-6xl mx-auto space-y-6">
+      <h1 className="text-2xl font-bold text-center">Unified Storybook Builder (Character → Pages → Images → PDF)</h1>
 
-            <div className="col-span-1 md:col-span-3">
-              <label className="text-sm font-medium block mb-1">Story Choice</label>
-              <Select value={choice} onValueChange={setChoice}>
-                <SelectTrigger className="w-full"><SelectValue placeholder="Choose a story" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="cowboy">🐎 Cowboy Adventure</SelectItem>
-                  <SelectItem value="space">🚀 Space Ranger Saga</SelectItem>
-                  <SelectItem value="underwater">🌊 Underwater Voyage</SelectItem>
-                  <SelectItem value="forest">🌲 Exploring the Forest</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+      <Tabs defaultValue="character" className="w-full">
+        <TabsList className="grid grid-cols-4">
+          <TabsTrigger value="character">Character</TabsTrigger>
+          <TabsTrigger value="story">Story Pages</TabsTrigger>
+          <TabsTrigger value="images">Images</TabsTrigger>
+          <TabsTrigger value="export">Export</TabsTrigger>
+        </TabsList>
 
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Global Consistency Prompt (editable)</label>
-            <Textarea value={globalStyle} onChange={(e) => setGlobalStyle(e.target.value)} className="min-h-[110px]" />
-          </div>
+        {/* CHARACTER TAB */}
+        <TabsContent value="character">
+          <Card className="shadow-md">
+            <CardHeader><CardTitle>Safe Generic Character</CardTitle></CardHeader>
+            <CardContent className="grid md:grid-cols-2 gap-4">
+              <div className="space-y-3">
+                <Label>Archetype</Label>
+                <Select value={archetype} onValueChange={setArchetype}>
+                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="BoyBase">BoyBase (generic)</SelectItem>
+                    <SelectItem value="GirlBase">GirlBase (generic)</SelectItem>
+                  </SelectContent>
+                </Select>
 
-          <div className="flex gap-3">
-            <Button onClick={handleGenerate}>Generate Pages</Button>
-            <Button variant="secondary" onClick={exportPDF} disabled={!pages.length}>Export PDF</Button>
-          </div>
-        </CardContent>
-      </Card>
+                <Label>Display Name (for prompts)</Label>
+                <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Child name (optional)" />
 
-      {pages.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Pages & Illustration Prompts</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {pages.map((p) => (
-              <div key={p.page} className="rounded-2xl border p-4 grid grid-cols-1 md:grid-cols-5 gap-4">
-                <div className="md:col-span-2 space-y-2">
-                  <div className="text-sm font-semibold">Page {p.page} — Upload Image (optional)</div>
-                  <input
-                    ref={(el) => (fileInputsRef.current[p.page] = el)}
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => handleImageChange(p.page, e.target.files?.[0])}
-                    className="block w-full text-sm"
-                  />
-                  {images[p.page] && (
-                    <img src={images[p.page]} alt={`Page ${p.page}`} className="w-full rounded-xl shadow" />
-                  )}
+                <Label>Skin Tone</Label>
+                <div className="grid grid-cols-5 gap-2">
+                  {SKIN_PRESETS.map((s) => (
+                    <Button key={s.id} variant={s.id === skin ? "default" : "outline"} onClick={() => setSkin(s.id)} className="flex items-center gap-2"><Swatch hex={s.hex} /> {s.label}</Button>
+                  ))}
                 </div>
-                <div className="md:col-span-3 space-y-2">
+
+                <Label>Hair Color</Label>
+                <div className="grid grid-cols-5 gap-2">
+                  {HAIR_COLORS.map((c) => (
+                    <Button key={c.id} variant={c.id === hairColor ? "default" : "outline"} onClick={() => setHairColor(c.id)} className="flex items-center gap-2"><Swatch hex={c.hex} /> {c.label}</Button>
+                  ))}
+                </div>
+
+                <Label>Hair Style</Label>
+                <Select value={hairStyle} onValueChange={setHairStyle}>
+                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="short">Short</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="long">Long</SelectItem>
+                    <SelectItem value="curly">Curly</SelectItem>
+                    <SelectItem value="braids">Braids</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <Label>Eye Color</Label>
+                <Select value={eyes} onValueChange={setEyes}>
+                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {EYE_COLORS.map((e) => <SelectItem key={e.id} value={e.id}>{e.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+
+                <div className="flex items-center justify-between">
                   <div>
-                    <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Story Text</div>
-                    <div className="text-sm whitespace-pre-wrap bg-muted/30 rounded-lg p-3">{p.text}</div>
+                    <Label>Include Hat / Headgear</Label>
+                    <p className="text-sm opacity-70">Story-themed: cowboy hat, space helmet, goggles, explorer cap</p>
                   </div>
-                  <div>
-                    <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Illustration Prompt (auto‑prefixed with Global Style)</div>
-                    <Textarea value={p.illustration} readOnly className="min-h-[120px]" />
+                  <Switch checked={includeHat} onCheckedChange={setIncludeHat} />
+                </div>
+
+                {includeHat && (
+                  <>
+                    <Label>Headgear Type</Label>
+                    <Select value={hatName} onValueChange={setHatName}>
+                      <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="cowboy">Cowboy Hat</SelectItem>
+                        <SelectItem value="space_helmet">Space Helmet</SelectItem>
+                        <SelectItem value="swim_goggles">Swim Goggles</SelectItem>
+                        <SelectItem value="explorer_cap">Explorer Cap</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </>
+                )}
+
+                <Label>Outfit Accent Color</Label>
+                <div className="grid grid-cols-6 gap-2">
+                  {OUTFIT_SWATCHES.map((c) => (
+                    <Button key={c.id} variant={c.id === accentColor ? "default" : "outline"} onClick={() => setAccentColor(c.id)} className="flex items-center gap-2"><Swatch hex={c.hex} /> {c.label}</Button>
+                  ))}
+                </div>
+
+                <Label>Style Strength</Label>
+                <Slider value={[Math.round(styleStrength * 100)]} onValueChange={(v) => setStyleStrength(v[0]/100)} max={100} step={1} />
+                <p className="text-sm opacity-70">How strongly to apply your house Style LoRA (recommended 0.75–0.9).</p>
+              </div>
+
+              <div className="space-y-3">
+                <Label>Favorite Animal (optional)</Label>
+                <Input value={favoriteAnimal} onChange={(e) => setFavoriteAnimal(e.target.value)} placeholder="e.g., bunny, chicken, dolphin" />
+
+                <Label>Favorite Place / Hometown (optional)</Label>
+                <Input value={homeTown} onChange={(e) => setHomeTown(e.target.value)} placeholder="e.g., Opelika, the park, the beach" />
+
+                <Label>Notes for Illustrator Prompt (optional)</Label>
+                <Textarea placeholder="Extra cozy details, lighting vibe, or props to include." />
+
+                <Card className="mt-4">
+                  <CardHeader><CardTitle className="text-base">Live Preview</CardTitle></CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      <div className="space-y-1">
+                        <p><strong>Name:</strong> {characterSpec.name}</p>
+                        <p><strong>Archetype:</strong> {characterSpec.archetype}</p>
+                        <p><strong>Skin:</strong> {skin}</p>
+                        <p><strong>Hair:</strong> {hairColor} / {hairStyle}</p>
+                        <p><strong>Eyes:</strong> {eyes}</p>
+                      </div>
+                      <div className="space-y-1">
+                        <p><strong>Accent:</strong> {accentColor}</p>
+                        <p><strong>Headgear:</strong> {includeHat ? hatName : "none"}</p>
+                        <p><strong>Animal:</strong> {favoriteAnimal || "—"}</p>
+                        <p><strong>Place:</strong> {homeTown || "—"}</p>
+                        <p><strong>Style LoRA:</strong> {characterSpec.style.lora} ({characterSpec.style.weight})</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* STORY PAGES TAB */}
+        <TabsContent value="story">
+          <Card className="shadow-md">
+            <CardHeader><CardTitle>Story Pages (auto from child + story)</CardTitle></CardHeader>
+            <CardContent>
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="space-y-3">
+                  <Label>Story</Label>
+                  <Select value={story} onValueChange={setStory}>
+                    <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cowboy">🐎 Cowboy Adventure</SelectItem>
+                      <SelectItem value="space">🚀 Space Ranger Saga</SelectItem>
+                      <SelectItem value="underwater">🌊 Underwater Voyage</SelectItem>
+                      <SelectItem value="forest">🌲 Forest Explorer</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  <p className="text-sm opacity-70">Each page also has a deterministic seed and a pose label for consistent composition.</p>
+
+                  <div className="space-y-2">
+                    {renderPlan.map(({ page, pose, seed }) => (
+                      <div key={page} className="flex items-center justify-between rounded-lg border p-2">
+                        <div className="text-sm"><strong>Page {page}:</strong> {pose}</div>
+                        <div className="text-xs opacity-70">Seed {seed}</div>
+                      </div>
+                    ))}
                   </div>
+                </div>
+
+                <div className="space-y-2">
+                  {pages.map((p) => (
+                    <div key={p.page} className="border rounded-lg p-2">
+                      <div className="text-sm font-semibold mb-1">Page {p.page}</div>
+                      <Textarea value={p.text} readOnly className="h-24" />
+                    </div>
+                  ))}
                 </div>
               </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* IMAGES TAB */}
+        <TabsContent value="images">
+          <Card className="shadow-md">
+            <CardHeader><CardTitle>Images (upload or render)</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-sm opacity-70">You can upload finished illustrations or click Render to call your backend (expects a /render-page endpoint).</p>
+              <div className="grid md:grid-cols-2 gap-4">
+                {pages.map((p, idx) => (
+                  <div key={p.page} className="rounded-lg border p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm font-semibold">Page {p.page}</div>
+                      <div className="text-xs opacity-70">Pose: {renderPlan[idx].pose} · Seed: {renderPlan[idx].seed}</div>
+                    </div>
+
+                    {images[p.page] ? (
+                      <img src={images[p.page]} alt={`Page ${p.page}`} className="w-full aspect-video object-cover rounded" />
+                    ) : (
+                      <div className="w-full aspect-video bg-neutral-200/30 rounded grid place-items-center text-xs opacity-70">No image yet</div>
+                    )}
+
+                    <div className="flex gap-2">
+                      <Input type="file" accept="image/*" onChange={(e) => handleUpload(e, p.page)} />
+                      <Button type="button" onClick={() => handleRender(idx)}>Render</Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* EXPORT TAB */}
+        <TabsContent value="export">
+          <Card className="shadow-md">
+            <CardHeader><CardTitle>Export & Developer JSON</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex flex-wrap gap-3">
+                <Button onClick={exportPDF}>Export Picture‑Book PDF</Button>
+                <Button variant="outline" onClick={() => navigator.clipboard.writeText(json)}>Copy API Payload JSON</Button>
+              </div>
+              <pre className="text-xs bg-neutral-950 text-neutral-200 p-3 rounded-lg overflow-auto max-h-[340px]">{json}</pre>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
+
