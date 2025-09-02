@@ -1,6 +1,6 @@
 import React, { useState } from "react";
-import StorybookBuilder_Pages_Prompts_PDF_Uploads from "./StorybookBuilder_PagesPromptsPDFUploads";
-import StorybookBuilder_JSONImporter from "./StorybookBuilder_JSONImporter";
+import UnifiedStorybookBuilder from "./UnifiedStorybookBuilder.jsx";     // <- your unified builder
+import StorybookBuilder_JSONImporter from "./StorybookBuilder_JSONImporter.jsx"; // importer file
 
 export default function App() {
   const [mode, setMode] = useState("form"); // "form" | "importer"
@@ -18,7 +18,7 @@ export default function App() {
             checked={mode === "form"}
             onChange={(e) => setMode(e.target.value)}
           />
-          <span className="ml-1">Form Builder (manual entry)</span>
+          <span className="ml-1">Form Builder (Unified)</span>
         </label>
 
         <label className="text-sm">
@@ -35,7 +35,7 @@ export default function App() {
 
       <div className="border rounded-lg p-4 shadow-sm">
         {mode === "form" ? (
-          <StorybookBuilder_Pages_Prompts_PDF_Uploads />
+          <UnifiedStorybookBuilder />
         ) : (
           <StorybookBuilder_JSONImporter />
         )}
@@ -43,3 +43,4 @@ export default function App() {
     </div>
   );
 }
+
